@@ -10,6 +10,8 @@ import com.learntrace.backend.repository.ConceptRepository;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -69,96 +71,146 @@ public class QuizController {
         int total = questions.size();
         int correct = 0;
 
+        List<Map<String, Object>> review = new ArrayList<>();
+
         for (Question question : questions) {
 
             String selectedAnswer = answers.get(question.getId());
 
-            if (selectedAnswer == null) {
-                continue;
-            }
-
-            /*
-             * Convert A/B/C/D into the actual option text.
-             *
-             * Example:
-             * A -> Stack
-             * B -> Queue
-             * C -> Tree
-             * D -> Graph
-             */
             String selectedText = selectedAnswer;
 
-            switch (selectedAnswer.toUpperCase()) {
+            if (selectedAnswer != null) {
 
-                case "A":
-                    selectedText = question.getOptionA();
-                    break;
+                switch (selectedAnswer.toUpperCase()) {
 
-                case "B":
-                    selectedText = question.getOptionB();
-                    break;
+                    case "A":
+                        selectedText = question.getOptionA();
+                        break;
 
-                case "C":
-                    selectedText = question.getOptionC();
-                    break;
+                    case "B":
+                        selectedText = question.getOptionB();
+                        break;
 
-                case "D":
-                    selectedText = question.getOptionD();
-                    break;
+                    case "C":
+                        selectedText = question.getOptionC();
+                        break;
 
-                default:
-                    selectedText = selectedAnswer;
+                    case "D":
+                        selectedText = question.getOptionD();
+                        break;
+
+                    default:
+                        selectedText = selectedAnswer;
+                }
             }
 
             String correctAnswer = question.getCorrectAnswer();
 
             boolean isCorrect = false;
 
-            if (correctAnswer != null) {
+            if (selectedAnswer != null && correctAnswer != null) {
 
-                /*
-                 * Case 1:
-                 * Database stores actual answer text.
-                 *
-                 * Example:
-                 * correctAnswer = "Queue"
-                 * selectedText = "Queue"
-                 */
-                if (selectedText.equalsIgnoreCase(correctAnswer.trim())) {
+                if (selectedText != null
+                        && selectedText.equalsIgnoreCase(
+                                correctAnswer.trim()
+                        )) {
+
                     isCorrect = true;
                 }
 
-                /*
-                 * Case 2:
-                 * Database stores A/B/C/D.
-                 *
-                 * Example:
-                 * correctAnswer = "B"
-                 * selectedAnswer = "B"
-                 */
-                if (selectedAnswer.equalsIgnoreCase(correctAnswer.trim())) {
+                if (selectedAnswer.equalsIgnoreCase(
+                        correctAnswer.trim()
+                )) {
+
                     isCorrect = true;
                 }
             }
+
+            if (isCorrect) {
+                correct++;
+            }
+
+            Map<String, Object> questionReview =
+                    new LinkedHashMap<>();
+
+            questionReview.put(
+                    "id",
+                    question.getId()
+            );
+
+            questionReview.put(
+                    "questionText",
+                    question.getQuestionText()
+            );
+
+            questionReview.put(
+                    "concept",
+                    question.getConcept()
+            );
+
+            questionReview.put(
+                    "questionType",
+                    question.getQuestionType()
+            );
+
+            questionReview.put(
+                    "optionA",
+                    question.getOptionA()
+            );
+
+            questionReview.put(
+                    "optionB",
+                    question.getOptionB()
+            );
+
+            questionReview.put(
+                    "optionC",
+                    question.getOptionC()
+            );
+
+            questionReview.put(
+                    "optionD",
+                    question.getOptionD()
+            );
+
+            questionReview.put(
+                    "selectedAnswer",
+                    selectedAnswer
+            );
+
+            questionReview.put(
+                    "selectedText",
+                    selectedText
+            );
+
+            questionReview.put(
+                    "correctAnswer",
+                    correctAnswer
+            );
+
+            questionReview.put(
+                    "isCorrect",
+                    isCorrect
+            );
+
+            review.add(questionReview);
 
             System.out.println(
                     "Question ID: " + question.getId()
                             + " | Selected: " + selectedAnswer
                             + " | Selected Text: " + selectedText
                             + " | Correct Answer: " + correctAnswer
-                            + " | Result: " + (isCorrect ? "CORRECT" : "WRONG")
+                            + " | Result: "
+                            + (isCorrect ? "CORRECT" : "WRONG")
             );
-
-            if (isCorrect) {
-                correct++;
-            }
         }
 
         int wrong = total - correct;
 
-        double score = total == 0
-                ? 0
-                : correct * 100.0 / total;
+        double score =
+                total == 0
+                        ? 0
+                        : correct * 100.0 / total;
 
         long finalScore = Math.round(score);
 
@@ -173,24 +225,27 @@ public class QuizController {
         );
 
         attempt.setTotalQuestions(total);
+
         attempt.setCorrectAnswers(correct);
+
         attempt.setWrongAnswers(wrong);
+
         attempt.setScore(finalScore);
-        attempt.setAttemptedAt(LocalDateTime.now());
+
+        attempt.setAttemptedAt(
+                LocalDateTime.now()
+        );
 
         attemptRepository.save(attempt);
 
-        /*
-         * Update concept score when a specific concept is being tested.
-         */
         if (concept != null && !concept.isBlank()) {
 
             System.out.println(
-                    "SEARCHING CONCEPT: [" +
-                            concept +
-                            "] SUBJECT: [" +
-                            subject +
-                            "]"
+                    "SEARCHING CONCEPT: ["
+                            + concept
+                            + "] SUBJECT: ["
+                            + subject
+                            + "]"
             );
 
             List<Concept> concepts =
@@ -200,28 +255,31 @@ public class QuizController {
                     );
 
             System.out.println(
-                    "CONCEPTS FOUND: " +
-                            concepts.size()
+                    "CONCEPTS FOUND: "
+                            + concepts.size()
             );
 
             if (!concepts.isEmpty()) {
 
-                Concept selectedConcept = concepts.get(0);
+                Concept selectedConcept =
+                        concepts.get(0);
 
                 System.out.println(
-                        "UPDATING " +
-                                selectedConcept.getName() +
-                                " SCORE FROM " +
-                                selectedConcept.getScore() +
-                                " TO " +
-                                finalScore
+                        "UPDATING "
+                                + selectedConcept.getName()
+                                + " SCORE FROM "
+                                + selectedConcept.getScore()
+                                + " TO "
+                                + finalScore
                 );
 
                 selectedConcept.setScore(
                         (double) finalScore
                 );
 
-                conceptRepository.save(selectedConcept);
+                conceptRepository.save(
+                        selectedConcept
+                );
 
                 System.out.println(
                         "CONCEPT SCORE UPDATED SUCCESSFULLY"
@@ -235,16 +293,54 @@ public class QuizController {
             }
         }
 
-        return Map.of(
-                "subject", subject,
-                "concept", attempt.getConcept(),
-                "questionType", questionType,
-                "totalQuestions", total,
-                "correctAnswers", correct,
-                "wrongAnswers", wrong,
-                "score", finalScore,
+        Map<String, Object> response =
+                new LinkedHashMap<>();
+
+        response.put(
+                "subject",
+                subject
+        );
+
+        response.put(
+                "concept",
+                attempt.getConcept()
+        );
+
+        response.put(
+                "questionType",
+                questionType
+        );
+
+        response.put(
+                "totalQuestions",
+                total
+        );
+
+        response.put(
+                "correctAnswers",
+                correct
+        );
+
+        response.put(
+                "wrongAnswers",
+                wrong
+        );
+
+        response.put(
+                "score",
+                finalScore
+        );
+
+        response.put(
+                "review",
+                review
+        );
+
+        response.put(
                 "message",
                 "Quiz result saved and concept score updated"
         );
+
+        return response;
     }
 }
