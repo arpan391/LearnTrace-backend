@@ -11,7 +11,7 @@ public class CorsConfig implements WebMvcConfigurer {
     public void addCorsMappings(CorsRegistry registry) {
         registry.addMapping("/**")
                 .allowedOriginPatterns(
-                    "https://*.warriors-f3d9.vercel.app",
+                  "https://*-warriors-f3d9.vercel.app",
                     "https://learn-trace-frontend.vercel.app"
                 )
                 .allowedMethods(
