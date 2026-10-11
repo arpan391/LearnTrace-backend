@@ -1,13 +1,13 @@
-
 package com.learntrace.backend.controller;
 
 import com.learntrace.backend.entity.Concept;
 import com.learntrace.backend.repository.ConceptRepository;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
-@CrossOrigin(origins = "http://localhost:5173")
 @RestController
 @RequestMapping("/concepts")
 public class ConceptController {
@@ -19,12 +19,24 @@ public class ConceptController {
     }
 
     @GetMapping
-    public List<Concept> getAllConcepts() {
-        return conceptRepository.findAll();
-    }
+    public List<Map<String, Object>> getAllConcepts() {
+        return conceptRepository.findAll()
+                .stream()
+                .map(concept -> {
+                    Map<String, Object> result =
+                            new LinkedHashMap<>();
 
-    @PostMapping
-    public Concept addConcept(@RequestBody Concept concept) {
-        return conceptRepository.save(concept);
+                    result.put("id", concept.getId());
+                    result.put("name", concept.getName());
+                    result.put("subject", concept.getSubject());
+                    result.put(
+                            "prerequisite",
+                            concept.getPrerequisite()
+                    );
+
+                    // Do not expose the shared global score.
+                    return result;
+                })
+                .toList();
     }
 }

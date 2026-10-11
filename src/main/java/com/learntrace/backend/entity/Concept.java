@@ -15,7 +15,6 @@ public class Concept {
     private String name;
     private String subject;
     private String prerequisite;
-    private Double score;
 
     public Long getId() {
         return id;
@@ -45,11 +44,4 @@ public class Concept {
         this.prerequisite = prerequisite;
         
     }
-    public Double getScore() {
-    return score;
-}
-
-public void setScore(Double score) {
-    this.score = score;
-}
 }
