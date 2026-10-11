@@ -31,3 +31,11 @@ build/
 
 ### VS Code ###
 .vscode/
+
+# Local credentials and database backups
+.env
+.env.*
+!.env.example
+*.dump
+*.backup
+*.sql.gz

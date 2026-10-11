@@ -5,7 +5,6 @@ import com.learntrace.backend.entity.Concept;
 import com.learntrace.backend.repository.ConceptRepository;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
 import java.util.List;
 
 @Service
@@ -37,54 +36,5 @@ public class KnowledgeGapService {
         }
     }
 
-    public List<Concept> getPersonalizedLearningPath() {
-
-        List<Concept> concepts = conceptRepository.findAll();
-        List<Concept> learningPath = new ArrayList<>();
-
-        for (Concept concept : concepts) {
-
-            Double score = concept.getScore();
-
-            if (score != null && score < 60) {
-                addPrerequisites(
-                        concept,
-                        concepts,
-                        learningPath
-                );
-            }
-        }
-
-        return learningPath;
-    }
-
-    private void addPrerequisites(
-            Concept concept,
-            List<Concept> concepts,
-            List<Concept> learningPath) {
-
-        String prerequisite = concept.getPrerequisite();
-
-        if (prerequisite != null && !prerequisite.isBlank()) {
-
-            for (Concept parent : concepts) {
-
-                if (parent.getName().equalsIgnoreCase(prerequisite)) {
-
-                    addPrerequisites(
-                            parent,
-                            concepts,
-                            learningPath
-                    );
-
-                    break;
-                }
-            }
-        }
-
-        if (!learningPath.contains(concept)) {
-            learningPath.add(concept);
-        }
-    }
 }
 

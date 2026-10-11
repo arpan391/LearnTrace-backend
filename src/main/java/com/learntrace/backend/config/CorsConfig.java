@@ -11,18 +11,17 @@ public class CorsConfig implements WebMvcConfigurer {
     public void addCorsMappings(CorsRegistry registry) {
         registry.addMapping("/**")
                 .allowedOriginPatterns(
+                  "http://localhost:5173",
+                  "http://127.0.0.1:5173",
                   "https://*-warriors-f3d9.vercel.app",
                     "https://learn-trace-frontend.vercel.app"
                 )
                 .allowedMethods(
                     "GET",
                     "POST",
-                    "PUT",
-                    "PATCH",
-                    "DELETE",
                     "OPTIONS"
                 )
-                .allowedHeaders("*")
+                .allowedHeaders("Authorization", "Content-Type")
                 .maxAge(3600);
     }
 }
