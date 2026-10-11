@@ -19,6 +19,7 @@ import com.learntrace.backend.repository.StudentRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -29,6 +30,7 @@ import java.time.LocalDateTime;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -47,6 +49,7 @@ class BackendApplicationTests {
     @Autowired AuthController auth;
     @Autowired PasswordEncoder passwordEncoder;
     @Autowired SessionService sessionService;
+    @Autowired JdbcTemplate jdbcTemplate;
 
     @BeforeEach
     void clearIsolatedDatabase() {
@@ -74,6 +77,82 @@ class BackendApplicationTests {
         assertEquals(1, ((List<?>) history.getHistory("Bearer token-a", "Math").getBody()).size());
         assertEquals(1, ((List<?>) history.getHistory("Bearer token-a", null).getBody()).size());
         assertEquals(1, ((List<?>) history.getHistory("Bearer token-b", "Math").getBody()).size());
+    }
+
+    @Test
+    void preservedLegacyConceptScoreIsNotPresentedAsPersonalProgress() {
+        Student a = student("a@example.test", "token-a");
+        Student b = student("b@example.test", "token-b");
+        Concept concept = concept("Fractions", "Math");
+        jdbcTemplate.update("UPDATE concept SET score = ? WHERE id = ?", 73.0, concept.getId());
+
+        Concept reloaded = concepts.findById(concept.getId()).orElseThrow();
+        assertEquals(73.0, reloaded.getLegacyScore());
+
+        Map<?, ?> aResult = (Map<?, ?>) ((List<?>) knowledge.getKnowledgeGaps("Bearer token-a").getBody()).get(0);
+        Map<?, ?> bResult = (Map<?, ?>) ((List<?>) knowledge.getKnowledgeGaps("Bearer token-b").getBody()).get(0);
+        assertNull(aResult.get("score"));
+        assertNull(bResult.get("score"));
+        assertFalse(aResult.containsKey("legacyScore"));
+        assertFalse(bResult.containsKey("legacyScore"));
+        assertTrue(progress.findByStudent_Id(a.getId()).isEmpty());
+        assertTrue(progress.findByStudent_Id(b.getId()).isEmpty());
+    }
+
+    @Test
+    void confirmedLegacyRecoveryIsIdempotentPreservesNewerProgressAndStaysPrivate() {
+        Student arpan = student(" Arpan@Example.com ", "token-a");
+        Student another = student("another@example.test", "token-b");
+        Concept legacyConcept = concept("Arrays", "Data Structures");
+        Concept newerConcept = concept("Linked List", "Data Structures");
+        jdbcTemplate.update("UPDATE concept SET score = ? WHERE id = ?", 100.0, legacyConcept.getId());
+        jdbcTemplate.update("UPDATE concept SET score = ? WHERE id = ?", 100.0, newerConcept.getId());
+        saveProgress(arpan, newerConcept, 96.0);
+
+        QuizAttempt legacyAttempt = new QuizAttempt();
+        legacyAttempt.setSubject("Data Structures");
+        legacyAttempt.setConcept("Arrays");
+        legacyAttempt.setTotalQuestions(2);
+        legacyAttempt.setCorrectAnswers(1);
+        legacyAttempt.setWrongAnswers(1);
+        legacyAttempt.setScore(50);
+        legacyAttempt.setAttemptedAt(LocalDateTime.of(2026, 10, 2, 20, 20, 18, 349_456_000));
+        attempts.save(legacyAttempt);
+        Long legacyAttemptId = legacyAttempt.getId();
+
+        QuizAttempt anotherStudentAttempt = new QuizAttempt();
+        anotherStudentAttempt.setStudent(another);
+        anotherStudentAttempt.setSubject("Data Structures");
+        anotherStudentAttempt.setConcept("Other student's quiz");
+        anotherStudentAttempt.setAttemptedAt(LocalDateTime.now());
+        attempts.save(anotherStudentAttempt);
+        long originalAttemptCount = attempts.count();
+
+        applyConfirmedRecoveryForTest("arpan@example.com", Set.of(legacyAttemptId));
+        applyConfirmedRecoveryForTest("arpan@example.com", Set.of(legacyAttemptId));
+
+        assertEquals(100.0, progress.findByStudent_IdAndConcept_Id(arpan.getId(), legacyConcept.getId()).orElseThrow().getScore());
+        assertEquals(96.0, progress.findByStudent_IdAndConcept_Id(arpan.getId(), newerConcept.getId()).orElseThrow().getScore());
+        assertEquals(2, progress.findByStudent_Id(arpan.getId()).size());
+        assertEquals(1, attempts.findByStudent_Id(arpan.getId()).size());
+        assertEquals(originalAttemptCount, attempts.count());
+        QuizAttempt recovered = attempts.findById(legacyAttemptId).orElseThrow();
+        assertEquals(arpan.getId(), recovered.getStudent().getId());
+        assertEquals(2, recovered.getTotalQuestions());
+        assertEquals(1, recovered.getCorrectAnswers());
+        assertEquals(1, recovered.getWrongAnswers());
+        assertEquals(50.0, recovered.getScore());
+        assertEquals(LocalDateTime.of(2026, 10, 2, 20, 20, 18, 349_456_000), recovered.getAttemptedAt());
+
+        Map<Long, Double> arpanScores = ((List<Map<String, Object>>) knowledge.getKnowledgeGaps("Bearer token-a").getBody())
+                .stream().collect(java.util.stream.Collectors.toMap(row -> ((Number) row.get("id")).longValue(), row -> (Double) row.get("score"), (left, right) -> left));
+        assertEquals(100.0, arpanScores.get(legacyConcept.getId()));
+        assertEquals(96.0, arpanScores.get(newerConcept.getId()));
+        assertEquals(1, ((List<?>) history.getHistory("Bearer token-a", null).getBody()).size());
+        List<?> anotherHistory = (List<?>) history.getHistory("Bearer token-b", null).getBody();
+        assertEquals(1, anotherHistory.size());
+        assertNotEquals(legacyAttemptId, ((Map<?, ?>) anotherHistory.get(0)).get("id"));
+        assertTrue(progress.findByStudent_Id(another.getId()).isEmpty());
     }
 
     @Test
@@ -126,6 +205,7 @@ class BackendApplicationTests {
         assertTrue(progress.findByStudent_Id(b.getId()).isEmpty());
         assertEquals(1, attempts.findByStudent_Id(a.getId()).size());
         assertTrue(attempts.findByStudent_Id(b.getId()).isEmpty());
+        assertEquals(a.getId(), attempts.findByStudent_Id(a.getId()).get(0).getStudent().getId());
     }
 
     @Test
@@ -155,8 +235,12 @@ class BackendApplicationTests {
         legacy.setAttemptedAt(LocalDateTime.now());
         attempts.save(legacy);
         assertEquals(1, attempts.count());
+        assertNull(attempts.findById(legacy.getId()).orElseThrow().getStudent());
         assertTrue(attempts.findByStudent_Id(a.getId()).isEmpty());
+        Student b = student("b@example.test", "token-b");
+        assertTrue(attempts.findByStudent_Id(b.getId()).isEmpty());
         assertTrue(((List<?>) history.getHistory("Bearer token-a", "Math").getBody()).isEmpty());
+        assertTrue(((List<?>) history.getHistory("Bearer token-b", "Math").getBody()).isEmpty());
     }
 
     @Test
@@ -246,6 +330,30 @@ class BackendApplicationTests {
         record.setScore(score);
         record.setUpdatedAt(LocalDateTime.now());
         progress.save(record);
+    }
+
+    private void applyConfirmedRecoveryForTest(String email, Set<Long> backupAttemptIds) {
+        List<Student> matches = students.findAll().stream()
+                .filter(student -> student.getEmail() != null
+                        && student.getEmail().trim().equalsIgnoreCase(email.trim()))
+                .toList();
+        if (matches.size() != 1) {
+            throw new IllegalStateException("Expected exactly one existing recovery account");
+        }
+        Student owner = matches.get(0);
+
+        for (Concept concept : concepts.findAll()) {
+            if (concept.getLegacyScore() == null) continue;
+            if (progress.findByStudent_IdAndConcept_Id(owner.getId(), concept.getId()).isPresent()) continue;
+            saveProgress(owner, concept, concept.getLegacyScore());
+        }
+
+        for (QuizAttempt attempt : attempts.findAll()) {
+            if (backupAttemptIds.contains(attempt.getId()) && attempt.getStudent() == null) {
+                attempt.setStudent(owner);
+                attempts.save(attempt);
+            }
+        }
     }
 
     private void saveAttempt(Student student, String subject, String concept) {
