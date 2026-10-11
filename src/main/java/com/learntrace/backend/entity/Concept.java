@@ -4,6 +4,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.Column;
 
 @Entity
 public class Concept {
@@ -15,6 +16,11 @@ public class Concept {
     private String name;
     private String subject;
     private String prerequisite;
+
+    // Retain the old shared value for recovery inspection only. Never use it
+    // as a student's personal progress score.
+    @Column(name = "score", insertable = false, updatable = false)
+    private Double legacyScore;
 
     public Long getId() {
         return id;
@@ -43,5 +49,9 @@ public class Concept {
     public void setPrerequisite(String prerequisite) {
         this.prerequisite = prerequisite;
         
+    }
+
+    public Double getLegacyScore() {
+        return legacyScore;
     }
 }
