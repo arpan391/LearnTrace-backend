@@ -156,6 +156,68 @@ class BackendApplicationTests {
     }
 
     @Test
+    void liveRecoverySnapshotRestoresAllScoresAndAttemptsOnlyForConfirmedOwner() {
+        Student arpan = student("arpan@example.com", "token-a");
+        Student another = student("another@example.test", "token-b");
+        Map<String, Object[]> liveScores = Map.ofEntries(
+                Map.entry("Arrays", new Object[]{"Data Structures", 100.0}),
+                Map.entry("Linked List", new Object[]{"Data Structures", 100.0}),
+                Map.entry("Stack", new Object[]{"Data Structures", 100.0}),
+                Map.entry("Queue", new Object[]{"Data Structures", 100.0}),
+                Map.entry("Trees", new Object[]{"Data Structures", 100.0}),
+                Map.entry("Recursion", new Object[]{"Data Structures", 100.0}),
+                Map.entry("Graphs", new Object[]{"Data Structures", 100.0}),
+                Map.entry("SQL", new Object[]{"DBMS", 86.0}),
+                Map.entry("Keys", new Object[]{"DBMS", 100.0}),
+                Map.entry("Threads", new Object[]{"Operating Systems", 50.0}),
+                Map.entry("OSI Model", new Object[]{"Computer Networks", 0.0}),
+                Map.entry("HTTP and HTTPS", new Object[]{"Computer Networks", 100.0}),
+                Map.entry("Java Basics", new Object[]{"Java Programming", 67.0}),
+                Map.entry("Python Basics", new Object[]{"Python Programming", 100.0}),
+                Map.entry("Searching", new Object[]{"Algorithms", 80.0}));
+        Map<String, Concept> liveConcepts = new java.util.HashMap<>();
+        liveScores.forEach((name, values) -> {
+            Concept concept = concept(name, (String) values[0]);
+            jdbcTemplate.update("UPDATE concept SET score = ? WHERE id = ?", values[1], concept.getId());
+            liveConcepts.put(name, concept);
+        });
+        saveProgress(arpan, liveConcepts.get("Java Basics"), 92.0);
+
+        Set<Long> liveAttemptIds = new java.util.HashSet<>();
+        for (int i = 1; i <= 33; i++) {
+            QuizAttempt legacy = new QuizAttempt();
+            legacy.setSubject("Legacy subject " + i);
+            legacy.setConcept("Legacy concept " + i);
+            legacy.setTotalQuestions(2);
+            legacy.setCorrectAnswers(1);
+            legacy.setWrongAnswers(1);
+            legacy.setScore(50);
+            legacy.setAttemptedAt(LocalDateTime.of(2026, 10, 10, 15, 0).plusMinutes(i));
+            liveAttemptIds.add(attempts.save(legacy).getId());
+        }
+        saveAttempt(another, "Other subject", "Other student's attempt");
+        long originalAttemptCount = attempts.count();
+
+        applyConfirmedRecoveryForTest("arpan@example.com", liveAttemptIds);
+        applyConfirmedRecoveryForTest("arpan@example.com", liveAttemptIds);
+
+        assertEquals(15, progress.findByStudent_Id(arpan.getId()).size());
+        assertEquals(92.0, progress.findByStudent_IdAndConcept_Id(arpan.getId(), liveConcepts.get("Java Basics").getId()).orElseThrow().getScore());
+        assertEquals(50.0, progress.findByStudent_IdAndConcept_Id(arpan.getId(), liveConcepts.get("Threads").getId()).orElseThrow().getScore());
+        assertEquals(0.0, progress.findByStudent_IdAndConcept_Id(arpan.getId(), liveConcepts.get("OSI Model").getId()).orElseThrow().getScore());
+        assertEquals(100.0, progress.findByStudent_IdAndConcept_Id(arpan.getId(), liveConcepts.get("HTTP and HTTPS").getId()).orElseThrow().getScore());
+        assertTrue(progress.findByStudent_Id(another.getId()).isEmpty());
+
+        List<?> arpanHistory = (List<?>) history.getHistory("Bearer token-a", null).getBody();
+        assertEquals(33, arpanHistory.size());
+        assertEquals(34, attempts.count());
+        assertEquals(1, ((List<?>) history.getHistory("Bearer token-b", null).getBody()).size());
+        assertEquals(33, attempts.findByStudent_Id(arpan.getId()).size());
+        assertEquals(originalAttemptCount, attempts.count());
+        assertTrue(liveAttemptIds.stream().allMatch(id -> attempts.findById(id).orElseThrow().getStudent().getId().equals(arpan.getId())));
+    }
+
+    @Test
     void submissionUpdatesOnlyAuthenticatedStudentsProgress() {
         Student a = student("a@example.test", "token-a");
         Student b = student("b@example.test", "token-b");
